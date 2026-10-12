@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Halloween-Kostümwahl</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    :root{
+      --bg:#0f0f12;--panel:#18181d;--panel2:#222229;--text:#f7f7fb;--muted:#aaaab5;
+      --orange:#ff7a18;--border:#34343d;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:linear-gradient(180deg,#0c0c0f,#15131a);color:var(--text);min-height:100vh}
+    .wrap{max-width:980px;margin:0 auto;padding:22px}
+    .hero{text-align:center;padding:22px 0 12px}
+    .hero .pumpkin{font-size:44px}
+    h1{margin:8px 0 6px;font-size:clamp(28px,5vw,46px)}
+    .sub{color:var(--muted);margin:0}
+    .card{background:rgba(24,24,29,.96);border:1px solid var(--border);border-radius:18px;padding:18px;margin-top:16px}
+    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    .between{justify-content:space-between}
+    button,input{font:inherit}
+    button{cursor:pointer;border:0;border-radius:12px;padding:12px 16px;font-weight:700}
+    button:disabled{opacity:.55;cursor:not-allowed}
+    .primary{background:var(--orange);color:#17110c}
+    .secondary{background:var(--panel2);color:var(--text);border:1px solid var(--border)}
+    .danger{background:#7f1d1d;color:white}
+    .ghost{background:transparent;color:var(--text);border:1px solid var(--border)}
+    input{width:100%;background:#101014;color:white;border:1px solid var(--border);border-radius:12px;padding:12px}
+    label{display:block;color:var(--muted);font-size:14px;margin:12px 0 6px}
+    .grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:16px}
+    .costume{min-height:58px;background:#24242b;color:white;border:1px solid #3d3d47;font-size:20px}
+    .costume:hover{border-color:var(--orange)}
+    .badge{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--border);border-radius:999px;padding:7px 10px;color:var(--muted);font-size:14px}
+    .dot{width:9px;height:9px;border-radius:50%;background:#777}
+    .open .dot{background:#22c55e}.closed .dot{background:#ef4444}
+    .hidden{display:none!important}
+    .center{text-align:center}
+    .big-number{font-size:64px;font-weight:900;color:var(--orange);line-height:1}
+    .msg{margin-top:12px;padding:12px;border-radius:12px;background:#111116;color:var(--muted);border:1px solid var(--border)}
+    .msg.ok{border-color:#215d39;color:#b9f5cc}
+    .msg.err{border-color:#6b2525;color:#ffd0d0}
+    .tabs{display:flex;gap:8px;justify-content:center;margin-top:18px}
+    .tab.active{background:var(--orange);color:#17110c}
+    .stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+    .stat{background:#111116;border:1px solid var(--border);border-radius:14px;padding:16px}
+    .stat .n{font-size:34px;font-weight:800;margin-top:4px}
+    table{width:100%;border-collapse:collapse;margin-top:12px}
+    th,td{padding:10px;border-bottom:1px solid var(--border);text-align:left}
+    th{color:var(--muted);font-size:13px}
+    .small{font-size:13px;color:var(--muted)}
+    @media (min-width:640px){.grid{grid-template-columns:repeat(6,minmax(0,1fr))}}
+    @media (min-width:820px){.grid{grid-template-columns:repeat(8,minmax(0,1fr))}}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <header class="hero">
+    <div class="pumpkin">🎃</div>
+    <h1>Halloween-Kostümwahl</h1>
+    <p class="sub">Wähle das schönste Kostüm des Abends.</p>
+    <div class="tabs">
+      <button id="voteTab" class="tab primary active">Abstimmen</button>
+      <button id="adminTab" class="tab secondary">Admin</button>
+    </div>
+  </header>
+
+  <main>
+    <section id="voteView">
+      <div class="card">
+        <div class="row between">
+          <div>
+            <strong>Deine Stimme</strong>
+            <div class="small">Pro Browser/Gerät ist eine Stimme vorgesehen.</div>
+          </div>
+          <div id="voteStatus" class="badge"><span class="dot"></span><span>Status wird geladen…</span></div>
+        </div>
+
+        <div id="loadingVote" class="msg">Abstimmung wird geladen…</div>
+        <div id="alreadyVoted" class="msg ok hidden">Danke! Auf diesem Gerät wurde bereits abgestimmt.</div>
+        <div id="closedVote" class="msg hidden">Die Abstimmung ist momentan geschlossen.</div>
+        <div id="numbersArea" class="hidden"><div id="numberGrid" class="grid"></div></div>
+      </div>
+
+      <div id="confirmCard" class="card center hidden">
+        <div class="small">Du möchtest abstimmen für</div>
+        <div id="selectedNumber" class="big-number">01</div>
+        <p>Möchtest du deine Stimme wirklich abgeben?</p>
+        <div class="row" style="justify-content:center">
+          <button id="cancelVote" class="secondary">Zurück</button>
+          <button id="submitVote" class="primary">Stimme abgeben</button>
+        </div>
+        <div id="voteMessage" class="msg hidden"></div>
+      </div>
+
+      <div id="thanksCard" class="card center hidden">
+        <div style="font-size:48px">👻</div>
+        <h2>Danke fürs Abstimmen!</h2>
+        <p class="sub">Deine Stimme wurde gezählt.</p>
+      </div>
+    </section>
+
+    <section id="adminView" class="hidden">
+      <div id="loginCard" class="card">
+        <h2>Admin-Login</h2>
+        <p class="sub">Nur für Veranstalter.</p>
+        <label for="email">E-Mail</label>
+        <input id="email" type="email" autocomplete="username" placeholder="name@example.de">
+        <label for="password">Passwort</label>
+        <input id="password" type="password" autocomplete="current-password" placeholder="Passwort">
+        <div class="row" style="margin-top:14px"><button id="loginBtn" class="primary">Anmelden</button></div>
+        <div id="loginMessage" class="msg hidden"></div>
+      </div>
+
+      <div id="dashboard" class="hidden">
+        <div class="card">
+          <div class="row between">
+            <div><h2 style="margin:0">Adminbereich</h2><div class="small" id="adminEmail"></div></div>
+            <button id="logoutBtn" class="ghost">Abmelden</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Abstimmung steuern</h3>
+          <label for="maxNumber">Höchste Kostümnummer</label>
+          <input id="maxNumber" type="number" min="1" max="300">
+          <div class="row" style="margin-top:14px">
+            <button id="saveCountBtn" class="secondary">Anzahl speichern</button>
+            <button id="toggleVotingBtn" class="primary">Abstimmung öffnen/schließen</button>
+          </div>
+          <div id="adminSettingsMessage" class="msg hidden"></div>
+        </div>
+
+        <div class="card">
+          <div class="row between">
+            <h3 style="margin:0">Ergebnis</h3>
+            <button id="refreshBtn" class="secondary">Aktualisieren</button>
+          </div>
+          <div class="stats" style="margin-top:14px">
+            <div class="stat"><div class="small">Stimmen gesamt</div><div id="totalVotes" class="n">0</div></div>
+            <div class="stat"><div class="small">Aktuell vorne</div><div id="leader" class="n">–</div></div>
+          </div>
+          <div style="overflow:auto">
+            <table>
+              <thead><tr><th>Platz</th><th>Kostüm</th><th>Stimmen</th></tr></thead>
+              <tbody id="resultsBody"></tbody>
+            </table>
+          </div>
+          <div class="row" style="margin-top:16px">
+            <button id="resetVotesBtn" class="danger">Alle Stimmen löschen</button>
+            <button id="resetDeviceBtn" class="secondary">Testsperre dieses Geräts zurücksetzen</button>
+          </div>
+          <div id="resultsMessage" class="msg hidden"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+const SUPABASE_URL = "https://hrnuhihzyzrulditdsxh.supabase.co";
+const SUPABASE_KEY = "sb_publishable_nv1xenhht3TQ1aRZGWUvZQ_6W7nSUPe";
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+const DEVICE_TOKEN_KEY = "halloween_device_token_2026";
+const DEVICE_VOTED_KEY = "halloween_voted_2026";
+let settingsRow = null;
+let selectedCostume = null;
+
+const el = id => document.getElementById(id);
+const show = (id, yes=true) => el(id).classList.toggle("hidden", !yes);
+
+function setMsg(id, text, type=""){
+  const box=el(id); box.textContent=text; box.className="msg "+type; box.classList.remove("hidden");
+}
+function clearMsg(id){ el(id).classList.add("hidden"); }
+
+function getDeviceToken(){
+  let token=localStorage.getItem(DEVICE_TOKEN_KEY);
+  if(!token){
+    token=(crypto.randomUUID ? crypto.randomUUID() : ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g,c=>(c^crypto.getRandomValues(new Uint8Array(1))[0]&15>>c/4).toString(16)));
+    localStorage.setItem(DEVICE_TOKEN_KEY,token);
+  }
+  return token;
+}
+
+function switchTab(which){
+  const vote=which==="vote";
+  show("voteView",vote); show("adminView",!vote);
+  el("voteTab").className="tab "+(vote?"primary active":"secondary");
+  el("adminTab").className="tab "+(!vote?"primary active":"secondary");
+  if(!vote) refreshAuth();
+}
+el("voteTab").addEventListener("click",()=>switchTab("vote"));
+el("adminTab").addEventListener("click",()=>switchTab("admin"));
+
+async function loadSettings(){
+  const {data,error}=await sb.from("halloween_settings")
+    .select("id,max_costume_number,voting_open,results_visible")
+    .order("id",{ascending:true}).limit(1).single();
+
+  if(error){ setMsg("loadingVote","Fehler beim Laden: "+error.message,"err"); return; }
+
+  settingsRow=data;
+  show("loadingVote",false);
+  const status=el("voteStatus");
+  status.className="badge "+(data.voting_open?"open":"closed");
+  status.innerHTML='<span class="dot"></span><span>'+(data.voting_open?"Abstimmung offen":"Abstimmung geschlossen")+'</span>';
+
+  if(localStorage.getItem(DEVICE_VOTED_KEY)==="1"){
+    show("alreadyVoted",true); show("closedVote",false); show("numbersArea",false); return;
+  }
+  if(!data.voting_open){
+    show("alreadyVoted",false); show("closedVote",true); show("numbersArea",false); return;
+  }
+  show("alreadyVoted",false); show("closedVote",false); show("numbersArea",true);
+  renderNumbers(data.max_costume_number);
+}
+
+function renderNumbers(max){
+  const grid=el("numberGrid"); grid.innerHTML="";
+  for(let i=1;i<=max;i++){
+    const btn=document.createElement("button");
+    btn.type="button"; btn.className="costume"; btn.textContent=String(i).padStart(2,"0");
+    btn.addEventListener("click",()=>{
+      selectedCostume=i;
+      el("selectedNumber").textContent=String(i).padStart(2,"0");
+      show("confirmCard",true);
+      el("confirmCard").scrollIntoView({behavior:"smooth",block:"center"});
+    });
+    grid.appendChild(btn);
+  }
+}
+
+el("cancelVote").addEventListener("click",()=>{selectedCostume=null;show("confirmCard",false);clearMsg("voteMessage")});
+
+el("submitVote").addEventListener("click",async()=>{
+  clearMsg("voteMessage");
+  if(localStorage.getItem(DEVICE_VOTED_KEY)==="1"){
+    setMsg("voteMessage","Auf diesem Gerät wurde bereits abgestimmt.","err"); return;
+  }
+  if(!selectedCostume){ setMsg("voteMessage","Bitte zuerst eine Kostümnummer auswählen.","err"); return; }
+
+  el("submitVote").disabled=true;
+  const {error}=await sb.rpc("submit_halloween_vote",{
+    p_costume_number:selectedCostume,
+    p_device_token:getDeviceToken()
+  });
+  el("submitVote").disabled=false;
+
+  if(error){
+    const duplicate = error.message && error.message.toLowerCase().includes("already voted");
+    if(duplicate){
+      localStorage.setItem(DEVICE_VOTED_KEY,"1");
+      setMsg("voteMessage","Auf diesem Gerät wurde bereits abgestimmt.","err");
+    }else{
+      setMsg("voteMessage","Die Stimme konnte nicht gespeichert werden: "+error.message,"err");
+    }
+    return;
+  }
+
+  localStorage.setItem(DEVICE_VOTED_KEY,"1");
+  show("confirmCard",false); show("numbersArea",false); show("thanksCard",true);
+});
+
+async function refreshAuth(){
+  const {data:{session}}=await sb.auth.getSession();
+  if(session){
+    show("loginCard",false); show("dashboard",true);
+    el("adminEmail").textContent=session.user.email||"";
+    await loadAdmin();
+  }else{
+    show("loginCard",true); show("dashboard",false);
+  }
+}
+
+el("loginBtn").addEventListener("click",async()=>{
+  clearMsg("loginMessage");
+  const email=el("email").value.trim(), password=el("password").value;
+  if(!email||!password){setMsg("loginMessage","Bitte E-Mail und Passwort eingeben.","err");return}
+  el("loginBtn").disabled=true;
+  const {error}=await sb.auth.signInWithPassword({email,password});
+  el("loginBtn").disabled=false;
+  if(error){setMsg("loginMessage","Anmeldung fehlgeschlagen: "+error.message,"err");return}
+  await refreshAuth();
+});
+
+el("logoutBtn").addEventListener("click",async()=>{await sb.auth.signOut();await refreshAuth()});
+
+async function loadAdmin(){
+  const {data:s,error:sErr}=await sb.from("halloween_settings")
+    .select("id,max_costume_number,voting_open,results_visible")
+    .order("id",{ascending:true}).limit(1).single();
+
+  if(sErr){setMsg("adminSettingsMessage","Einstellungen konnten nicht geladen werden: "+sErr.message,"err");return}
+  settingsRow=s;
+  el("maxNumber").value=s.max_costume_number;
+  el("toggleVotingBtn").textContent=s.voting_open?"Abstimmung schließen":"Abstimmung öffnen";
+  await loadResults();
+}
+
+async function loadResults(){
+  clearMsg("resultsMessage");
+  const {data,error}=await sb.from("halloween_votes").select("costume_number");
+  if(error){setMsg("resultsMessage","Stimmen konnten nicht geladen werden: "+error.message,"err");return}
+
+  const counts={};
+  for(const row of data) counts[row.costume_number]=(counts[row.costume_number]||0)+1;
+  const ranking=Object.entries(counts).map(([n,c])=>({number:Number(n),count:c}))
+    .sort((a,b)=>b.count-a.count||a.number-b.number);
+
+  el("totalVotes").textContent=data.length;
+  el("leader").textContent=ranking.length?String(ranking[0].number).padStart(2,"0"):"–";
+  const body=el("resultsBody"); body.innerHTML="";
+  ranking.forEach((r,i)=>{
+    const tr=document.createElement("tr");
+    tr.innerHTML="<td>"+(i+1)+"</td><td>Nr. "+String(r.number).padStart(2,"0")+"</td><td>"+r.count+"</td>";
+    body.appendChild(tr);
+  });
+  if(!ranking.length){
+    const tr=document.createElement("tr");tr.innerHTML='<td colspan="3" class="small">Noch keine Stimmen abgegeben.</td>';body.appendChild(tr);
+  }
+}
+
+el("saveCountBtn").addEventListener("click",async()=>{
+  clearMsg("adminSettingsMessage");
+  if(!settingsRow)return;
+  let n=parseInt(el("maxNumber").value,10);
+  if(!Number.isFinite(n)||n<1||n>300){setMsg("adminSettingsMessage","Bitte eine Zahl zwischen 1 und 300 eingeben.","err");return}
+  const {error}=await sb.from("halloween_settings")
+    .update({max_costume_number:n,updated_at:new Date().toISOString()}).eq("id",settingsRow.id);
+  if(error){setMsg("adminSettingsMessage","Speichern fehlgeschlagen: "+error.message,"err");return}
+  setMsg("adminSettingsMessage","Kostümnummern 1 bis "+n+" sind jetzt aktiv.","ok");
+  await loadSettings();await loadAdmin();
+});
+
+el("toggleVotingBtn").addEventListener("click",async()=>{
+  clearMsg("adminSettingsMessage");
+  if(!settingsRow)return;
+  const next=!settingsRow.voting_open;
+  const {error}=await sb.from("halloween_settings")
+    .update({voting_open:next,updated_at:new Date().toISOString()}).eq("id",settingsRow.id);
+  if(error){setMsg("adminSettingsMessage","Änderung fehlgeschlagen: "+error.message,"err");return}
+  setMsg("adminSettingsMessage",next?"Abstimmung ist jetzt geöffnet.":"Abstimmung ist jetzt geschlossen.","ok");
+  await loadSettings();await loadAdmin();
+});
+
+el("refreshBtn").addEventListener("click",loadResults);
+
+el("resetDeviceBtn").addEventListener("click",()=>{
+  localStorage.removeItem(DEVICE_VOTED_KEY);
+  localStorage.removeItem(DEVICE_TOKEN_KEY);
+  getDeviceToken();
+  setMsg("resultsMessage","Die Abstimm-Sperre dieses Browsers wurde für weitere Tests zurückgesetzt.","ok");
+  loadSettings();
+});
+
+el("resetVotesBtn").addEventListener("click",async()=>{
+  clearMsg("resultsMessage");
+  if(!confirm("Wirklich ALLE abgegebenen Stimmen löschen? Das kann nicht rückgängig gemacht werden."))return;
+  const {error}=await sb.from("halloween_votes").delete().gte("id",0);
+  if(error){setMsg("resultsMessage","Löschen fehlgeschlagen: "+error.message,"err");return}
+  setMsg("resultsMessage","Alle Stimmen wurden gelöscht.","ok");await loadResults();
+});
+
+sb.auth.onAuthStateChange(()=>refreshAuth());
+getDeviceToken();
+loadSettings();
+refreshAuth();
+</script>
+</body>
+</html>
