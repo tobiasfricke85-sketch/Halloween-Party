@@ -29,8 +29,8 @@
     .ghost{background:transparent;color:var(--text);border:1px solid var(--border)}
     input{width:100%;background:#101014;color:white;border:1px solid var(--border);border-radius:12px;padding:12px}
     label{display:block;color:var(--muted);font-size:14px;margin:12px 0 6px}
-    .grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:16px}
-    .costume{min-height:58px;background:#24242b;color:white;border:1px solid #3d3d47;font-size:20px}
+    .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:16px}
+    .costume{overflow:hidden;padding:0;background:#24242b;color:white;border:1px solid #3d3d47;font-size:20px}.costume img,.photo-placeholder{width:100%;aspect-ratio:3/4;object-fit:cover;display:block;background:#15151b}.photo-placeholder{display:grid;place-items:center;color:#aaaab5;font-size:14px}.costume-number{display:block;padding:10px}.photo-preview{max-width:180px;max-height:220px;object-fit:contain;border-radius:12px;margin-top:12px}
     .costume:hover{border-color:var(--orange)}
     .badge{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--border);border-radius:999px;padding:7px 10px;color:var(--muted);font-size:14px}
     .dot{width:9px;height:9px;border-radius:50%;background:#777}
@@ -50,8 +50,8 @@
     th,td{padding:10px;border-bottom:1px solid var(--border);text-align:left}
     th{color:var(--muted);font-size:13px}
     .small{font-size:13px;color:var(--muted)}
-    @media (min-width:640px){.grid{grid-template-columns:repeat(6,minmax(0,1fr))}}
-    @media (min-width:820px){.grid{grid-template-columns:repeat(8,minmax(0,1fr))}}
+    @media (min-width:640px){.grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
+    @media (min-width:820px){.grid{grid-template-columns:repeat(5,minmax(0,1fr))}}
   </style>
 </head>
 <body>
@@ -80,7 +80,7 @@
         <div id="loadingVote" class="msg">Abstimmung wird geladen…</div>
         <div id="alreadyVoted" class="msg ok hidden">Danke! Auf diesem Gerät wurde bereits abgestimmt.</div>
         <div id="closedVote" class="msg hidden">Die Abstimmung ist momentan geschlossen.</div>
-        <div id="numbersArea" class="hidden"><div id="numberGrid" class="grid"></div></div>
+        <div id="numbersArea" class="hidden"><div class="row" style="margin-top:14px"><span class="small">Tippe auf ein Kostüm, um es auszuwählen.</span><button id="refreshPhotos" class="secondary">Fotos aktualisieren</button></div><div id="photoLoadMessage" class="msg hidden"></div><div id="numberGrid" class="grid"></div></div>
       </div>
 
       <div id="confirmCard" class="card center hidden">
@@ -133,6 +133,17 @@
         </div>
 
         <div class="card">
+          <h3>Kostümfoto hinzufügen</h3>
+          <label for="photoNumber">Kostümnummer</label>
+          <input id="photoNumber" type="number" min="1" max="300" inputmode="numeric" placeholder="z. B. 12">
+          <label for="photoFile">Foto aufnehmen oder auswählen</label>
+          <input id="photoFile" type="file" accept="image/*">
+          <img id="photoPreview" class="photo-preview hidden" alt="Vorschau des ausgewählten Fotos">
+          <div class="row" style="margin-top:14px"><button id="uploadPhotoBtn" class="primary">Foto hochladen</button><button id="deletePhotoBtn" class="secondary">Foto dieser Nummer löschen</button></div>
+          <div id="photoMessage" class="msg hidden"></div>
+        </div>
+
+        <div class="card">
           <div class="row between">
             <h3 style="margin:0">Ergebnis</h3>
             <button id="refreshBtn" class="secondary">Aktualisieren</button>
@@ -167,6 +178,8 @@ const DEVICE_TOKEN_KEY = "halloween_device_token_2026";
 const DEVICE_VOTED_KEY = "halloween_voted_2026";
 let settingsRow = null;
 let selectedCostume = null;
+let photos = {};
+const PHOTO_BUCKET = "halloween-fotos";
 
 const el = id => document.getElementById(id);
 const show = (id, yes=true) => el(id).classList.toggle("hidden", !yes);
@@ -215,6 +228,7 @@ async function loadSettings(){
     show("alreadyVoted",false); show("closedVote",true); show("numbersArea",false); return;
   }
   show("alreadyVoted",false); show("closedVote",false); show("numbersArea",true);
+  await loadPhotos();
   renderNumbers(data.max_costume_number);
 }
 
@@ -222,7 +236,14 @@ function renderNumbers(max){
   const grid=el("numberGrid"); grid.innerHTML="";
   for(let i=1;i<=max;i++){
     const btn=document.createElement("button");
-    btn.type="button"; btn.className="costume"; btn.textContent=String(i).padStart(2,"0");
+    btn.type="button"; btn.className="costume"; btn.setAttribute("aria-label", "Kostüm Nummer " + i);
+    if(photos[i]){
+      const img=document.createElement("img"); img.src=sb.storage.from(PHOTO_BUCKET).getPublicUrl(photos[i]).data.publicUrl; img.alt="Kostüm Nummer " + i; img.loading="lazy";
+      btn.appendChild(img);
+    }else{
+      const placeholder=document.createElement("span"); placeholder.className="photo-placeholder"; placeholder.textContent="Noch kein Foto"; btn.appendChild(placeholder);
+    }
+    const number=document.createElement("span"); number.className="costume-number"; number.textContent="Nr. " + String(i).padStart(2,"0"); btn.appendChild(number);
     btn.addEventListener("click",()=>{
       selectedCostume=i;
       el("selectedNumber").textContent=String(i).padStart(2,"0");
@@ -232,6 +253,69 @@ function renderNumbers(max){
     grid.appendChild(btn);
   }
 }
+
+async function loadPhotos(){
+  const {data,error}=await sb.from("halloween_photos").select("costume_number,storage_path");
+  if(error){setMsg("photoLoadMessage","Fotos konnten nicht geladen werden. Bitte später aktualisieren.","err");return;}
+  photos=Object.fromEntries(data.map(row=>[row.costume_number,row.storage_path]));
+  clearMsg("photoLoadMessage");
+}
+el("refreshPhotos").addEventListener("click",async()=>{await loadPhotos();if(settingsRow)renderNumbers(settingsRow.max_costume_number)});
+
+el("photoFile").addEventListener("change",()=>{
+  const file=el("photoFile").files[0];
+  if(el("photoPreview").dataset.url) URL.revokeObjectURL(el("photoPreview").dataset.url);
+  show("photoPreview",!!file);
+  if(file){const url=URL.createObjectURL(file); el("photoPreview").src=url; el("photoPreview").dataset.url=url;}
+});
+async function compressPhoto(file){
+  const bitmap=await createImageBitmap(file, {imageOrientation:"from-image"});
+  const scale=Math.min(1,1200/Math.max(bitmap.width,bitmap.height));
+  const canvas=document.createElement("canvas"); canvas.width=Math.round(bitmap.width*scale); canvas.height=Math.round(bitmap.height*scale);
+  canvas.getContext("2d").drawImage(bitmap,0,0,canvas.width,canvas.height); bitmap.close();
+  return await new Promise((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(new Error("Bild konnte nicht verarbeitet werden")),"image/jpeg",0.8));
+}
+function validPhotoNumber(){
+  const n=Number(el("photoNumber").value);
+  if(!Number.isInteger(n)||n<1||!settingsRow||n>settingsRow.max_costume_number){setMsg("photoMessage","Bitte eine aktive Kostümnummer zwischen 1 und " + (settingsRow?.max_costume_number||300) + " eingeben.","err");return null;}
+  return n;
+}
+el("uploadPhotoBtn").addEventListener("click",async()=>{
+  clearMsg("photoMessage"); const n=validPhotoNumber(), file=el("photoFile").files[0]; if(!n)return;
+  if(!file || !file.type.startsWith("image/")){setMsg("photoMessage","Bitte zuerst ein Foto auswählen.","err");return;}
+  el("uploadPhotoBtn").disabled=true; el("deletePhotoBtn").disabled=true;
+  try{
+    setMsg("photoMessage","Foto wird vorbereitet und hochgeladen …");
+    const blob=await compressPhoto(file);
+    const path=n+"/"+crypto.randomUUID()+".jpg";
+    const {data:old,error:readError}=await sb.from("halloween_photos").select("storage_path").eq("costume_number",n).maybeSingle();
+    if(readError)throw readError;
+    const {error:uploadError}=await sb.storage.from(PHOTO_BUCKET).upload(path,blob,{contentType:"image/jpeg"});
+    if(uploadError)throw uploadError;
+    const {error:saveError}=await sb.from("halloween_photos").upsert({costume_number:n,storage_path:path});
+    if(saveError){await sb.storage.from(PHOTO_BUCKET).remove([path]);throw saveError;}
+    let cleanupWarning="";
+    if(old?.storage_path){const {error}=await sb.storage.from(PHOTO_BUCKET).remove([old.storage_path]);if(error)cleanupWarning=" Das alte Foto konnte nicht aus dem Speicher entfernt werden.";}
+    el("photoFile").value=""; show("photoPreview",false);
+    setMsg("photoMessage","Foto für Nummer " + n + " wurde gespeichert."+cleanupWarning,"ok");
+    await loadPhotos();if(settingsRow)renderNumbers(settingsRow.max_costume_number);
+  }catch(error){setMsg("photoMessage","Foto konnte nicht gespeichert werden: " + (error.message||error),"err");}
+  finally{el("uploadPhotoBtn").disabled=false;el("deletePhotoBtn").disabled=false;}
+});
+el("deletePhotoBtn").addEventListener("click",async()=>{
+  clearMsg("photoMessage"); const n=validPhotoNumber(); if(!n)return;
+  if(!confirm("Foto für Kostümnummer " + n + " wirklich löschen?"))return;
+  el("uploadPhotoBtn").disabled=true;el("deletePhotoBtn").disabled=true;
+  try{
+    const {data,error}=await sb.from("halloween_photos").select("storage_path").eq("costume_number",n).maybeSingle();if(error)throw error;
+    if(!data){setMsg("photoMessage","Für diese Nummer ist kein Foto gespeichert.");return;}
+    const {error:deleteError}=await sb.from("halloween_photos").delete().eq("costume_number",n);if(deleteError)throw deleteError;
+    const {error:storageError}=await sb.storage.from(PHOTO_BUCKET).remove([data.storage_path]);
+    setMsg("photoMessage",storageError?"Foto aus der Anzeige entfernt; das gespeicherte Bild konnte nicht gelöscht werden.":"Foto wurde gelöscht.",storageError?"err":"ok");
+    await loadPhotos();if(settingsRow)renderNumbers(settingsRow.max_costume_number);
+  }catch(error){setMsg("photoMessage","Löschen fehlgeschlagen: " + (error.message||error),"err");}
+  finally{el("uploadPhotoBtn").disabled=false;el("deletePhotoBtn").disabled=false;}
+});
 
 el("cancelVote").addEventListener("click",()=>{selectedCostume=null;show("confirmCard",false);clearMsg("voteMessage")});
 
