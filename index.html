@@ -134,6 +134,8 @@
 
         <div class="card">
           <h3>Kostümfoto hinzufügen</h3>
+          <div id="nextPhotoNumber" class="msg" role="status">Nächste freie Nummer wird ermittelt …</div>
+          <button id="refreshNextPhoto" class="secondary" style="margin-top:10px">Anzeige aktualisieren</button>
           <label for="photoNumber">Kostümnummer</label>
           <input id="photoNumber" type="number" min="1" max="300" inputmode="numeric" placeholder="z. B. 12">
           <label for="photoFile">Foto aufnehmen oder auswählen</label>
@@ -256,10 +258,20 @@ function renderNumbers(max){
 
 async function loadPhotos(){
   const {data,error}=await sb.from("halloween_photos").select("costume_number,storage_path");
-  if(error){setMsg("photoLoadMessage","Fotos konnten nicht geladen werden. Bitte später aktualisieren.","err");return;}
+  if(error){setMsg("photoLoadMessage","Fotos konnten nicht geladen werden. Bitte später aktualisieren.","err");el("nextPhotoNumber").textContent="Nächste freie Nummer konnte nicht ermittelt werden. Bitte Anzeige aktualisieren.";return;}
   photos=Object.fromEntries(data.map(row=>[row.costume_number,row.storage_path]));
   clearMsg("photoLoadMessage");
+  updateNextPhotoNumber();
 }
+function updateNextPhotoNumber(){
+  if(!settingsRow)return;
+  let next=1;
+  while(next<=settingsRow.max_costume_number && photos[next])next++;
+  el("nextPhotoNumber").textContent=next<=settingsRow.max_costume_number
+    ? "Nächste Nummer ohne Foto: " + String(next).padStart(2,"0")
+    : "Für alle aktiven Nummern sind Fotos vorhanden. Erhöhe bei Bedarf die höchste Kostümnummer.";
+}
+el("refreshNextPhoto").addEventListener("click",loadPhotos);
 el("refreshPhotos").addEventListener("click",async()=>{await loadPhotos();if(settingsRow)renderNumbers(settingsRow.max_costume_number)});
 
 el("photoFile").addEventListener("change",()=>{
@@ -381,6 +393,7 @@ async function loadAdmin(){
   settingsRow=s;
   el("maxNumber").value=s.max_costume_number;
   el("toggleVotingBtn").textContent=s.voting_open?"Abstimmung schließen":"Abstimmung öffnen";
+  await loadPhotos();
   await loadResults();
 }
 
