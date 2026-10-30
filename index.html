@@ -137,7 +137,8 @@
           <div id="nextPhotoNumber" class="msg" role="status">Nächste freie Nummer wird ermittelt …</div>
           <button id="refreshNextPhoto" class="secondary" style="margin-top:10px">Anzeige aktualisieren</button>
           <label for="photoNumber">Kostümnummer</label>
-          <input id="photoNumber" type="number" min="1" max="300" inputmode="numeric" placeholder="z. B. 12">
+          <input id="photoNumber" type="number" min="1" max="300" inputmode="numeric" placeholder="Nächste freie Nummer">
+          <div class="small">Die nächste Nummer ohne Foto wird automatisch eingetragen. Für Korrekturen kannst du sie ändern.</div>
           <label for="photoFile">Foto aufnehmen oder auswählen</label>
           <input id="photoFile" type="file" accept="image/*">
           <img id="photoPreview" class="photo-preview hidden" alt="Vorschau des ausgewählten Fotos">
@@ -256,17 +257,24 @@ function renderNumbers(max){
   }
 }
 
-async function loadPhotos(){
+let photoNumberEdited = false;
+el("photoNumber").addEventListener("input",()=>{photoNumberEdited=true;});
+
+async function loadPhotos(resetNumber=false){
   const {data,error}=await sb.from("halloween_photos").select("costume_number,storage_path");
   if(error){setMsg("photoLoadMessage","Fotos konnten nicht geladen werden. Bitte später aktualisieren.","err");el("nextPhotoNumber").textContent="Nächste freie Nummer konnte nicht ermittelt werden. Bitte Anzeige aktualisieren.";return;}
   photos=Object.fromEntries(data.map(row=>[row.costume_number,row.storage_path]));
   clearMsg("photoLoadMessage");
-  updateNextPhotoNumber();
+  updateNextPhotoNumber(resetNumber===true);
 }
-function updateNextPhotoNumber(){
+function updateNextPhotoNumber(resetNumber=false){
   if(!settingsRow)return;
   let next=1;
   while(next<=settingsRow.max_costume_number && photos[next])next++;
+  if(resetNumber || !photoNumberEdited){
+    el("photoNumber").value=next<=settingsRow.max_costume_number ? String(next) : "";
+    photoNumberEdited=false;
+  }
   el("nextPhotoNumber").textContent=next<=settingsRow.max_costume_number
     ? "Nächste Nummer ohne Foto: " + String(next).padStart(2,"0")
     : "Für alle aktiven Nummern sind Fotos vorhanden. Erhöhe bei Bedarf die höchste Kostümnummer.";
@@ -310,7 +318,7 @@ el("uploadPhotoBtn").addEventListener("click",async()=>{
     if(old?.storage_path){const {error}=await sb.storage.from(PHOTO_BUCKET).remove([old.storage_path]);if(error)cleanupWarning=" Das alte Foto konnte nicht aus dem Speicher entfernt werden.";}
     el("photoFile").value=""; show("photoPreview",false);
     setMsg("photoMessage","Foto für Nummer " + n + " wurde gespeichert."+cleanupWarning,"ok");
-    await loadPhotos();if(settingsRow)renderNumbers(settingsRow.max_costume_number);
+    await loadPhotos(true);if(settingsRow)renderNumbers(settingsRow.max_costume_number);
   }catch(error){setMsg("photoMessage","Foto konnte nicht gespeichert werden: " + (error.message||error),"err");}
   finally{el("uploadPhotoBtn").disabled=false;el("deletePhotoBtn").disabled=false;}
 });
@@ -324,7 +332,7 @@ el("deletePhotoBtn").addEventListener("click",async()=>{
     const {error:deleteError}=await sb.from("halloween_photos").delete().eq("costume_number",n);if(deleteError)throw deleteError;
     const {error:storageError}=await sb.storage.from(PHOTO_BUCKET).remove([data.storage_path]);
     setMsg("photoMessage",storageError?"Foto aus der Anzeige entfernt; das gespeicherte Bild konnte nicht gelöscht werden.":"Foto wurde gelöscht.",storageError?"err":"ok");
-    await loadPhotos();if(settingsRow)renderNumbers(settingsRow.max_costume_number);
+    await loadPhotos(true);if(settingsRow)renderNumbers(settingsRow.max_costume_number);
   }catch(error){setMsg("photoMessage","Löschen fehlgeschlagen: " + (error.message||error),"err");}
   finally{el("uploadPhotoBtn").disabled=false;el("deletePhotoBtn").disabled=false;}
 });
